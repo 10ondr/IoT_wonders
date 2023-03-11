@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<!-- =========== READ FIRST =========== -->
+<!-- 1. Web Bluetooth currently only works in client mode, it can't behave as GATT server -->
+<!-- 2. This html file needs to be served via https, otherwise bluetooth won't be allowed by chrome -->
+<!-- 3. To be able to reconnect to already paired device, you need to enable chrome://flags/#enable-web-bluetooth-new-permissions-backend -->
+
+<!-- =========== GENERAL INFO =========== -->
+<!--
+This is a minimal example showing how to connect to a BLE (Bluetooth Low Energy) device from Android Chrome browser and send and receive data.
+Edit values "deviceName", "serviceName", "charReadName" and "charWriteName" before running this file.
+When you click the button "Pair new BLE device", the browser opens a pairing dialog showing BLE devices that match the filter and 
+are currently advertising. After pairing it will start receiving data from the "charReadName" characteristic and also sending data to the
+"charWriteName" characteristic. When you reload the page, it will attempt to reconnect to the paired device.
+-->
+<html>
+  <head>
+  </head>
+  <body>
+    <p>DATA:</p><p id="outputfield"></p>
+    <p>ERROR:</p><p id="errorfield"></p>
+    <button id="blepairbtn">Pair new BLE device</button>
+  </body>
+
+  <script>
+    // HTML elements
+    const button = document.querySelector('#blepairbtn');
+    const outputfield = document.querySelector('#outputfield');
+    const errorfield = document.querySelector('#errorfield');
+    outputfield.innerHTML = "STARTED";
+    
+    // BLE device server config
+    const deviceName = 'ESP32';
+    const serviceName = '4fafc201-1fb5-459e-8fcc-c5c9c331914b'; // Service UUID on your BLE device (server)
+    const charReadName = 'beb5483e-36e1-4688-b7f5-ea07361b26a8'; // Characteristic UUID on your BLE device, that the android browser will read from
+    const charWriteName = '2eb5483e-36e1-4688-b7f5-ea07361b26a8'; // Characteristic UUID on your BLE device, that the android browser will write to
+
+    // BLE device references
+    let device = null;
+    let server = null;
+    let service = null;
+    let charRead = null;
+    let charWrite = null;
+
+    // Convert ArrayBuffer to string
+    function arrayBufferToString(buffer){
+      var arr = new Uint8Array(buffer);
+      var strval = String.fromCharCode.apply(String, arr);
+      if(/[\u0080-\uffff]/.test(strval)){
+          throw new Error("String contains encoded multibytes");
+      }
+      return strval;
+    }
+
+    // Notifying doesn't work with my current chrome on android (Version 111.0.5563.58)
+    // Throws "GATT error: not supported"
+    // To receive data from BLE server we need to poll instead
+    // function charCallback(event) {
+    //   outputfield.innerHTML = `charCallback 1`;
+    //   const val = arrayBufferToString(event.target.value.buffer);
+    //   outputfield.innerHTML = `charCallback 2`;
+    //   console.log(`VALUE:${val}`);
+    //   outputfield.innerHTML = `VALUE:${val}`;
+    // }
+
+    const getDevice = async () => {
+      return await navigator.bluetooth.requestDevice({
+        filters: [{
+          name: deviceName,
+        }],
+        optionalServices: [serviceName], // Needs to be here in order to access the service later
+      })
+    };
+
+    const getServer = async (device) => {
+      return await device.gatt.connect();
+    };
+
+    const getService = async (server, serviceUUID) => {
+      return await server.getPrimaryService(serviceUUID);
+    };
+    
+    const getChar = async (service, charUUID) => {
+      return await service.getCharacteristic(charUUID);
+    };
+
+    const readFromChar = async (char) => {
+      const valueRaw = await char.readValue();
+      return arrayBufferToString(valueRaw.buffer);
+    };
+
+    const writeToChar = async (char, valueUint8Array) => {
+      return await char.writeValue(valueUint8Array);
+    };
+
+    const processBle = async (bledevice) => {
+      try {
+        device = bledevice || await getDevice();
+        outputfield.innerHTML = `DEVICE OK`;
+        server = await getServer(device);
+        outputfield.innerHTML = `SERVER OK`;
+        service = await getService(server, serviceName);
+        outputfield.innerHTML = `SERVICE OK`;
+        charRead = await getChar(service, charReadName);
+        outputfield.innerHTML = `CHAR_READ OK`;
+        charWrite = await getChar(service, charWriteName);
+        outputfield.innerHTML = `CHAR_WRITE OK`;
+
+        // charRead.addEventListener('characteristicvaluechanged', charCallback);
+        // await charRead.startNotifications();
+      } catch (error) {
+        errorfield.innerHTML = `${error}`;
+      }
+    }
+
+    // READ from charactersitic charRead
+    setInterval(async () => {
+      try {
+        if (charRead) {
+          const readVal = await readFromChar(charRead);
+          outputfield.innerHTML = `${readVal}`;
+        }
+      } catch (error) {
+        errorfield.innerHTML = `${error}`;
+      }
+    }, 2000);
+
+    // WRITE to characteristic charWrite
+    let counter = 65;
+    setInterval(async () => {
+      try {
+        if (charWrite) {
+          const writeVal = Uint8Array.of(counter);
+          await writeToChar(charWrite, writeVal);
+          counter += 1;
+        }
+      } catch (error) {
+        errorfield.innerHTML = `${error}`;
+      }
+    }, 2500);
+
+    const reconnectPairedDevice = async () => {
+      try {
+        const abortController = new AbortController();
+        const devices = await navigator.bluetooth.getDevices();
+        if (devices.length > 0) {
+          const foundDevice = devices[0];
+          
+          foundDevice.addEventListener('advertisementreceived', (event) => {
+            // Stop watching advertisements to conserve battery life.
+            abortController.abort();
+            outputfield.innerHTML = `ADVERTISEMENT RECEIVED`;
+            processBle(foundDevice);
+          }, { once: true });
+          outputfield.innerHTML = `WATCHING FOR ADVERTISEMENTS`;
+          foundDevice.watchAdvertisements({ signal: abortController.signal }); 
+        }
+      } catch (error) {
+        errorfield.innerHTML = `${error}`;
+      }
+    };
+    reconnectPairedDevice(); // Try to recoonect already paired device (must be advertising)
+
+    // Show dialog for pairing new devices on button click
+    button.addEventListener('click', async function() {
+      processBle();
+    });
+  </script>
+</html>
