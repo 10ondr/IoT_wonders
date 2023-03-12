@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<!-- =========== READ FIRST =========== -->
+<!-- Change the "roomName" variable value below to your own -->
+
+<!-- Android Chrome - how to disable same origin policy: -->
+<!-- 1. Install ADB (Anrdoid Debug Bridge) CLI tool from https://developer.android.com/studio/command-line/adb -->
+<!-- 2. On the Android device, enable USB debugging (you might need to be in the developer mode) -->
+<!-- 3. Connect the phone to your pc via USB -->
+<!-- 4. Run command "adb.exe devices" and you should see your device -->
+<!-- 5. Run command "adb.exe shell" and the shell should open (you might need to accept popup on the phone) -->
+<!-- 6. In the shell run command: echo "chrome -disable-web-security -user-data-dir=/data/user/0/com.android.chrome/app_chrome/Default" > /data/local/tmp/chrome-command-line -->
+<!-- 7. On Android chrome go to URL "chrome://flags" and enable the flag "Enable command line on non-rooted devices" -->
+<!-- 8. Restart Chrome, if not working restart phone -->
+
+<!-- Windows Chrome - how to disable same origin policy: -->
+<!-- 1. Make sure no chrome.exe process is running -->
+<!-- 2. Run command "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --disable-site-isolation-trials --disable-web-security --user-data-dir="E:\temp" -->
+<!-- 3. Make sure the directory "E:\temp" exists (you can put any writable directory you want) -->
+
+<!-- =========== GENERAL INFO =========== -->
+<!-- Under normal circumastances you can't access contents of an iframe from javascript (from the parent context) due to the 
+same origin policy in most browsers. Read the steps above to disable the same origin policy on Android Chrome and Window Chrome.
+This file should be served via https, otherwise it might not work. -->
+
+<!-- This particular file will automatically connect to a meetingrooms.net, fill in user and join the room -->
+<!-- Tested on Chrome Version 111 -->
+<html>
+<head>
+
+</head>
+
+<body>
+
+  <iframe
+    id="video-iframe"
+    src=""
+    height="1000"
+    width="1000"
+    title="description"
+    allow="camera https://go.meetingrooms.net; microphone https://go.meetingrooms.net"
+  ></iframe>
+
+</body>
+
+<script>
+  const roomName = '<your meetingrooms.net room here>';
+  const iframeSrc = `https://go.meetingrooms.net/live/${roomName}/room1?auth=1`;
+  const user = 'user1';
+  let iframeRef = null;
+  let action = -1;
+
+  const getIframe = () => {
+    return document.querySelector('iframe#video-iframe');
+  }
+
+  const fillUser = (iframe, userName) => {
+    const userInput = iframe.contentWindow.document.querySelector('input#guest_name');
+    if (userInput) {
+      userInput.value = userName;
+      return true;
+    }
+    return false;
+  };
+
+  const confirmUser = (iframe) => {
+    const buttons = iframe.contentWindow.document.querySelectorAll('input.btn-join-session');
+    if (buttons.length > 1) {
+      buttons[1].click();
+      return true;
+    }
+    return false;
+  };
+
+  const joinRoom = (iframe) => {
+    const joinButton = iframe.contentWindow.document.querySelector('button.ds-notification-button-new.ds-notification-button-new-full-width');
+    if (joinButton) {
+      joinButton.click();
+      return true;
+    }
+    return false;
+  };
+
+  const isReadyToJoin = (iframe) => {
+    return !!iframe.contentWindow.document.querySelector('button.ds-notification-button-new.ds-notification-button-new-full-width');
+  };
+
+  const intervalRef = setInterval(() => {
+    console.log(`setInterval action:${action}`);
+    if (action === 0) {
+      iframe = getIframe();
+      if (iframe) {
+        iframe.src = iframeSrc
+        action = 1;
+      }
+    } else if (action === 1) {
+      if (fillUser(iframeRef, user)) {
+        action = 2;
+      }
+    } else if (action === 2) {
+      if (confirmUser(iframeRef)) {
+        action = 3;
+      }
+    }
+    if (isReadyToJoin(iframeRef) || action === 3) {
+      if (joinRoom(iframeRef)) {
+        action = 4;
+      }
+    }
+    if (action === 4) {
+      clearInterval(intervalRef);
+    }
+  }, 1000);
+
+</script>
+
+</html>
