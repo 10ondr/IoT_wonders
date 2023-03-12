@@ -47,7 +47,7 @@ This file should be served via https, otherwise it might not work. -->
   const iframeSrc = `https://go.meetingrooms.net/live/${roomName}/room1?auth=1`;
   const user = 'user1';
   let iframeRef = null;
-  let action = -1;
+  let action = 0;
 
   const getIframe = () => {
     return document.querySelector('iframe#video-iframe');
@@ -87,9 +87,9 @@ This file should be served via https, otherwise it might not work. -->
   const intervalRef = setInterval(() => {
     console.log(`setInterval action:${action}`);
     if (action === 0) {
-      iframe = getIframe();
-      if (iframe) {
-        iframe.src = iframeSrc
+      iframeRef = getIframe();
+      if (iframeRef) {
+        iframeRef.src = iframeSrc;
         action = 1;
       }
     } else if (action === 1) {
