@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<!-- =========== READ FIRST =========== -->
+<!-- Change the "roomName" variable value below to your own -->
+
+<!-- Android Chrome - how to disable same origin policy: -->
+<!-- 1. Install ADB (Anrdoid Debug Bridge) CLI tool from https://developer.android.com/studio/command-line/adb -->
+<!-- 2. On the Android device, enable USB debugging (you might need to be in the developer mode) -->
+<!-- 3. Connect the phone to your pc via USB -->
+<!-- 4. Run command "adb.exe devices" and you should see your device -->
+<!-- 5. Run command "adb.exe shell" and the shell should open (you might need to accept popup on the phone) -->
+<!-- 6. In the shell run command: echo "chrome -disable-web-security -user-data-dir=/data/user/0/com.android.chrome/app_chrome/Default" > /data/local/tmp/chrome-command-line -->
+<!-- 7. On Android chrome go to URL "chrome://flags" and enable the flag "Enable command line on non-rooted devices" -->
+<!-- 8. Restart Chrome, if not working restart phone -->
+
+<!-- Windows Chrome - how to disable same origin policy: -->
+<!-- 1. Make sure no chrome.exe process is running -->
+<!-- 2. Run command "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" --disable-site-isolation-trials --disable-web-security --user-data-dir="E:\temp" -->
+<!-- 3. Make sure the directory "E:\temp" exists (you can put any writable directory you want) -->
+
+<!-- =========== GENERAL INFO =========== -->
+<!-- Under normal circumastances you can't access contents of an iframe from javascript (from the parent context) due to the 
+same origin policy in most browsers. Read the steps above to disable the same origin policy on Android Chrome and Window Chrome.
+This file should be served via https, otherwise it might not work. -->
+
+<!-- This particular file will automatically connect to a meetingrooms.net, fill in user and join the room -->
+<!-- Tested on Chrome Version 111 -->
+<html>
+<head>
+
+</head>
+
+<body>
+  <iframe
+    id="video-iframe"
+    src=""
+    height="1000"
+    width="1000"
+    title="description"
+    allow="camera *; microphone *;autoplay"
+    allowusermedia
+  ></iframe>
+
+  <p>Bluetooth Low Energy (BLE):</p>
+  <p>DATA:</p><p id="outputfield"></p>
+  <p>ERROR:</p><p id="errorfield"></p>
+  <p>LOG:</p><p id="logfield"></p>
+  <button id="blepairbtn">Pair new BLE device</button>
+
+</body>
+
+<script>
+/**** General functions ****/
+const sleep = (milis) => {
+  return new Promise(resolve => setTimeout(resolve, milis));
+}
+
+const getQueryParams = () => {
+  const searchParams = new URLSearchParams(window.location.search);
+  return Object.fromEntries(searchParams.entries());
+};
+
+const waitForSelector = (iframe, selector) => {
+  return new Promise((resolve) => {
+      if (iframe.contentWindow.document.querySelector(selector)) {
+          return resolve(iframe.contentWindow.document.querySelector(selector));
+      }
+      const observer = new MutationObserver((mutations) => {
+          if (iframe.contentWindow.document.querySelector(selector)) {
+              resolve(iframe.contentWindow.document.querySelector(selector));
+              observer.disconnect();
+          }
+      });
+      observer.observe(iframe.contentWindow.document.body, {
+          childList: true,
+          subtree: true
+      });
+    });
+  };
+
+  const waitForSelectorAll = async (iframe, selector) => {
+    await waitForSelector(iframe, selector);
+    return iframe.contentWindow.document.querySelectorAll(selector);
+  }
+
+</script>
+
+<script>
+  /**** Bluetooth Low Energy (BLE) ****/
+  // HTML elements
+  const button = document.querySelector('#blepairbtn');
+  const outputfield = document.querySelector('#outputfield');
+  const errorfield = document.querySelector('#errorfield');
+  const logfield = document.querySelector('#logfield');
+  outputfield.innerHTML = "STARTED";
+  
+  // BLE device server config
+  const deviceName = 'ESP32';
+  const serviceName = '4fafc201-1fb5-459e-8fcc-c5c9c331914b'; // Service UUID on your BLE device (server)
+  const charReadName = 'beb5483e-36e1-4688-b7f5-ea07361b26a8'; // Characteristic UUID on your BLE device, that the android browser will read from
+  const charWriteName = '2eb5483e-36e1-4688-b7f5-ea07361b26a8'; // Characteristic UUID on your BLE device, that the android browser will write to
+
+  // BLE device references
+  let device = null;
+  let server = null;
+  let service = null;
+  let charRead = null;
+  let charWrite = null;
+
+  // Convert ArrayBuffer to string
+  function arrayBufferToString(buffer){
+    var arr = new Uint8Array(buffer);
+    var strval = String.fromCharCode.apply(String, arr);
+    if(/[\u0080-\uffff]/.test(strval)){
+        throw new Error("String contains encoded multibytes");
+    }
+    return strval;
+  }
+
+  // Notifying doesn't work with my current chrome on android (Version 111.0.5563.58)
+  // Throws "GATT error: not supported"
+  // To receive data from BLE server we need to poll instead
+  // function charCallback(event) {
+  //   outputfield.innerHTML = `charCallback 1`;
+  //   const val = arrayBufferToString(event.target.value.buffer);
+  //   outputfield.innerHTML = `charCallback 2`;
+  //   console.log(`VALUE:${val}`);
+  //   outputfield.innerHTML = `VALUE:${val}`;
+  // }
+
+  const getDevice = async () => {
+    return await navigator.bluetooth.requestDevice({
+      filters: [{
+        name: deviceName,
+      }],
+      optionalServices: [serviceName], // Needs to be here in order to access the service later
+    })
+  };
+
+  const getServer = async (device) => {
+    return await device.gatt.connect();
+  };
+
+  const getService = async (server, serviceUUID) => {
+    return await server.getPrimaryService(serviceUUID);
+  };
+  
+  const getChar = async (service, charUUID) => {
+    return await service.getCharacteristic(charUUID);
+  };
+
+  const readFromChar = async (char) => {
+    const valueRaw = await char.readValue();
+    return arrayBufferToString(valueRaw.buffer);
+  };
+
+  const writeToChar = async (char, valueUint8Array) => {
+    logfield.innerHTML = 'writeToChar inside';
+    return await char.writeValue(valueUint8Array);
+  };
+
+  const processBle = async (bledevice) => {
+    try {
+      device = bledevice || await getDevice();
+      outputfield.innerHTML = `DEVICE OK`;
+      server = await getServer(device);
+      outputfield.innerHTML = `SERVER OK`;
+      service = await getService(server, serviceName);
+      outputfield.innerHTML = `SERVICE OK`;
+      charRead = await getChar(service, charReadName);
+      outputfield.innerHTML = `CHAR_READ OK`;
+      charWrite = await getChar(service, charWriteName);
+      outputfield.innerHTML = `CHAR_WRITE OK`;
+
+      // charRead.addEventListener('characteristicvaluechanged', charCallback);
+      // await charRead.startNotifications();
+    } catch (error) {
+      errorfield.innerHTML = `${error}`;
+    }
+  }
+
+  // READ from charactersitic charRead
+  setInterval(async () => {
+    try {
+      if (charRead) {
+        const readVal = await readFromChar(charRead);
+        outputfield.innerHTML = `${readVal}`;
+      }
+    } catch (error) {
+      errorfield.innerHTML = `${error}`;
+    }
+  }, 2000);
+
+  // WRITE to characteristic charWrite
+  // let counter = 65;
+  // setInterval(async () => {
+  //   try {
+  //     if (charWrite) {
+  //       const writeVal = Uint8Array.of(counter);
+  //       await writeToChar(charWrite, writeVal);
+  //       counter += 1;
+  //     }
+  //   } catch (error) {
+  //     errorfield.innerHTML = `${error}`;
+  //   }
+  // }, 2500);
+
+  const reconnectPairedDevice = async () => {
+    try {
+      const abortController = new AbortController();
+      const devices = await navigator.bluetooth.getDevices();
+      if (devices.length > 0) {
+        const foundDevice = devices[0];
+        
+        foundDevice.addEventListener('advertisementreceived', (event) => {
+          // Stop watching advertisements to conserve battery life.
+          abortController.abort();
+          outputfield.innerHTML = `ADVERTISEMENT RECEIVED`;
+          processBle(foundDevice);
+        }, { once: true });
+        outputfield.innerHTML = `WATCHING FOR ADVERTISEMENTS`;
+        foundDevice.watchAdvertisements({ signal: abortController.signal }); 
+      }
+    } catch (error) {
+      errorfield.innerHTML = `${error}`;
+    }
+  };
+  reconnectPairedDevice(); // Try to recoonect already paired device (must be advertising)
+
+  // Show dialog for pairing new devices on button click
+  button.addEventListener('click', async function() {
+    processBle();
+  });
+</script>
+
+<script>
+  /**** Video Streaming via meetingrooms.net ****/
+  const roomName = '<your_room>';
+  const iframeSrc = `https://go.meetingrooms.net/live/${roomName}/room1?auth=0`;
+  let user = 'agentDefault';
+  let iframeRef = null;
+  let action = 0;
+
+  let initIntervalRef = null;
+  let responderIntervalRef = null;
+  let previousMessages = [];
+  let chatInited = false;
+
+  const getIframe = () => {
+    return document.querySelector('iframe#video-iframe');
+  }
+
+  const fillUser = (iframe, userName) => {
+    const userInput = iframe.contentWindow.document.querySelector('input#guest_name');
+    if (userInput) {
+      userInput.value = userName;
+      return true;
+    }
+    return false;
+  };
+
+  const confirmUser = (iframe) => {
+    const buttons = iframe.contentWindow.document.querySelectorAll('input.btn-join-session');
+    if (buttons.length > 1) {
+      buttons[1].click();
+      return true;
+    }
+    return false;
+  };
+
+  const joinRoom = (iframe) => {
+    const joinButton = iframe.contentWindow.document.querySelector('button.ds-notification-button-new.ds-notification-button-new-full-width');
+    if (joinButton) {
+      joinButton.click();
+      return true;
+    }
+    return false;
+  };
+
+  const isReadyToJoin = (iframe) => {
+    return !!iframe.contentWindow.document.querySelector('button.ds-notification-button-new.ds-notification-button-new-full-width');
+  };
+
+  const isChatWindowOpen = (iframe) => {
+    return !!iframe.contentWindow.document.querySelector('div.ds-side-panel-wrapp.chat');
+  };
+
+  const toggleChatWindow = (iframe) => {
+    const chatButton = iframe.contentWindow.document.querySelector('div.ds-chat-button .hit-area');
+    if (chatButton) {
+      chatButton.click();
+      return true;
+    }
+    return false;
+  };
+
+  const sendMessage = (iframe, text) => {
+    const inputEl = iframe.contentWindow.document.querySelector('textarea.chatInput');
+    if (inputEl) {
+      inputEl.value = text;
+      inputEl.dispatchEvent(new Event('change')); // Needed for the angular textarea to register the change 
+      inputEl.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, keyCode: 13 })); // Simulate 'Enter' key
+      return true;
+    }
+    return false;
+  };
+
+  // if 'outgoing' is true, it will return outgoing chat messages, otherwise it will return incoming chat messages
+  const getChatMessages = (iframe, outgoing = false) => {
+    const baseQuery = `.ds-conversations-wrapper message-view.chatMessage .ds-user-${outgoing ? 'me' : 'other'}`;
+    const messages = [...iframe.contentWindow.document.querySelectorAll(`${baseQuery} .chatMessage_text`)].map((el) => el.innerHTML);
+    const timestamps = [...iframe.contentWindow.document.querySelectorAll(`${baseQuery} .ds-time`)].map((el) => el.innerHTML);
+    return messages.map((msg, index) => ({ message: msg, timestamp: timestamps[index] }));
+  };
+
+  const openSettings = async (iframe, settingsTab) => {
+    settingsTab = ['workspace', 'video', 'audio'].includes(settingsTab) ? settingsTab : 'workspace';
+    // Click settigns button
+    const selectorSettingsBtn = 'div#ds-settings-button>div.hit-area';
+    (await waitForSelector(iframe, selectorSettingsBtn)).click();
+    // Select settings tab
+    const selectorSettingsTab = `ul.dropdown>li.${settingsTab}>div.dropdown-item`;
+    (await waitForSelector(iframe, selectorSettingsTab)).click();
+  };
+
+  const toggleCamera = async (iframe) => {
+    await openSettings(iframe, 'video');
+    const currentCamera = (await waitForSelector(iframe, 'select.videoInputs + span>span+span')).innerHTML;
+    await sleep(1000);
+    (await waitForSelector(iframe, 'select.videoInputs + span')).click();
+    const optionDivs = [...(await waitForSelectorAll(iframe, 'div.ui-selectmenu-open > ul.ui-widget-content div.ui-menu-item-wrapper'))];
+    console.log('optionDivs', optionDivs);
+    const availableOptions = optionDivs.filter((div) => div.innerHTML !== currentCamera);
+    console.log('availableOptions', availableOptions);
+    if (availableOptions.length > 0) {
+      await sleep(500);
+      availableOptions[0].parentElement.click();
+      await sleep(500);
+      availableOptions[0].parentElement.click();
+      await sleep(500);
+    }
+    // Apply button
+    (await waitForSelector(iframe, 'div.ds-room-settings-buttons-block button.ds-notification-button')).click();
+    await sleep(200);
+  };
+
+
+  const processMessage = async (message) => {
+    let parsed = message;
+    try {
+      parsed = JSON.parse(message);
+    } catch (error) {
+      // message is not JSON
+    }
+    console.log('PARSED MESSAGE:', parsed);
+    logfield.innerHTML = `Parsed message: ${parsed}`;
+    if (parsed.camera) {
+      if (parsed.camera === 'toggle') {
+        console.log('Toggle camera');
+        toggleCamera(iframeRef);
+      }
+    }
+    if (parsed.ble) {
+      logfield.innerHTML = 'parsed.ble';
+      if (parsed.ble.msg) {
+        logfield.innerHTML = 'parsed.ble.msg';
+          if (charWrite) {
+            logfield.innerHTML = `parsed.ble + charWrite: ${parsed.ble.msg}`;
+            const encoder = new TextEncoder(); // always utf-8
+            const writeVal = encoder.encode(parsed.ble.msg);
+            // const writeVal = Uint8Array.of(65);
+            logfield.innerHTML = `writeToChar start: ${parsed.ble.msg}`;
+            await writeToChar(charWrite, writeVal);
+            logfield.innerHTML = `writeToChar end: ${parsed.ble.msg}`;
+          }
+      }
+    }
+  };
+
+  const chatResponder = () => {
+    console.log('chatResponder invoked');
+    if (isChatWindowOpen(iframeRef)) {
+      if (!chatInited) {
+        previousMessages = getChatMessages(iframeRef);
+        chatInited = true;
+      };
+      const currentMessages = getChatMessages(iframeRef);
+      const lastMessage = previousMessages.length ? previousMessages[previousMessages.length - 1] : null;
+      const newMessages = [];
+      let isold = true;
+      for (const currentMsg of currentMessages) {
+        if (!lastMessage) {
+          newMessages.push(currentMsg);
+        } else {
+          if (currentMsg.timestamp === lastMessage.timestamp && currentMsg.message === lastMessage.message) {
+            isold = false;
+          } else if (!isold) {
+            newMessages.push(currentMsg);
+          }
+        }
+      }
+      console.log('chatResponder newMessages', newMessages);
+      for (const newMessage of newMessages) {
+        console.log('chatResponder processing new message', newMessage);
+        logfield.innerHTML = `New message: ${typeof newMessage === 'object' ? JSON.stringify(newMessage) : newMessage}`;
+        processMessage(newMessage.message);
+        sendMessage(iframeRef, `ACK:${newMessage.message}`);
+      }
+      previousMessages = currentMessages;
+    } else {
+      toggleChatWindow(iframeRef);
+    }
+  };
+
+  user = getQueryParams()['user'] || user;
+  console.log('user', user);
+
+  initIntervalRef = setInterval(() => {
+    console.log(`setInterval action:${action}`);
+    if (action === 0) {
+      iframeRef = getIframe();
+      if (iframeRef) {
+        iframeRef.src = iframeSrc;
+        action = 1;
+      }
+    } else if (action === 1) {
+      if (fillUser(iframeRef, user)) {
+        action = 2;
+      }
+    } else if (action === 2) {
+      if (confirmUser(iframeRef)) {
+        action = 3;
+      }
+    }
+    if (isReadyToJoin(iframeRef) || action === 3) {
+      if (joinRoom(iframeRef)) {
+        action = 4;
+      }
+    }
+    if (action === 4) {
+      clearInterval(initIntervalRef);
+      responderIntervalRef = setInterval(chatResponder, 3000);
+    }
+  }, 1000);
+
+</script>
+
+</html>
