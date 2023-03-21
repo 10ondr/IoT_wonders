@@ -343,6 +343,19 @@ const waitForSelector = (iframe, selector) => {
     await sleep(200);
   };
 
+  const setCamera = (iframe, shouldTurnOn) => {
+    const cameraBtn = iframe.contentWindow.document.querySelector('div#ds-toolbar-video-button>div.hit-area');
+    if ((cameraBtn.title === 'Camera off' && shouldTurnOn) || (cameraBtn.title === 'Camera on' && !shouldTurnOn)) {
+      cameraBtn.click();
+    }
+  };
+
+  const setMic = (iframe, shouldTurnOn) => {
+    const micBtn = iframe.contentWindow.document.querySelector('div#ds-toolbar-mic-button>div.hit-area');
+    if ((micBtn.title === 'Microphone off' && shouldTurnOn) || (micBtn.title === 'Microphone on' && !shouldTurnOn)) {
+      micBtn.click();
+    }
+  };
 
   const processMessage = async (message) => {
     let parsed = message;
@@ -357,6 +370,21 @@ const waitForSelector = (iframe, selector) => {
       if (parsed.camera === 'toggle') {
         console.log('Toggle camera');
         toggleCamera(iframeRef);
+      } else if (parsed.camera === 'on') {
+        console.log('Camera ON');
+        setCamera(iframeRef, true);
+      } else if (parsed.camera === 'off') {
+        console.log('Camera OFF');
+        setCamera(iframeRef, false);
+      }
+    }
+    if (parsed.mic) {
+      if (parsed.mic === 'on') {
+        console.log('Mic ON');
+        setMic(iframeRef, true);
+      } else if (parsed.mic === 'off') {
+        console.log('Mic OFF');
+        setMic(iframeRef, false);
       }
     }
     if (parsed.ble) {
