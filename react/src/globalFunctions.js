@@ -57,3 +57,7 @@ export const clearChat = async () => {
     delBtnEl.click();
     await sleep(300);
 };
+
+export const webrtc_getMediaServerUrl = () => {
+  return iframe?.contentWindow?.mediaserversInfo?.subscribingServer?.mediaUrl;
+};

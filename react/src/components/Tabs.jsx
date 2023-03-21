@@ -34,6 +34,22 @@ function Tabs() {
                             onClick={() => sendMessage({ camera: 'toggle' }) }
                         />
                         <Button
+                            label="Camera ON"
+                            onClick={() => sendMessage({ camera: 'on' }) }
+                        />
+                        <Button
+                            label="Camera OFF"
+                            onClick={() => sendMessage({ camera: 'off' }) }
+                        />
+                        <Button
+                            label="Mic ON"
+                            onClick={() => sendMessage({ mic: 'on' }) }
+                        />
+                        <Button
+                            label="Mic OFF"
+                            onClick={() => sendMessage({ mic: 'off' }) }
+                        />
+                        <Button
                             label="←"
                             onClick={() => sendMessage({ ble: { msg: 'd:3:1' }}) }
                         />

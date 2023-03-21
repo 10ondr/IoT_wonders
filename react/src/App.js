@@ -2,8 +2,9 @@ import './App.css';
 import "primereact/resources/themes/lara-light-indigo/theme.css";     
 import "primereact/resources/primereact.min.css";
 import "primeicons/primeicons.css";  
-import Tabs from './components/Tabs'
 import MeetingRoom from './components/MeetingRoom'
+import Tabs from './components/Tabs'
+import WebRTC from './components/WebRTC'
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         />
       </div>
       <Tabs />
+      <WebRTC />
     </div>
   );
 }

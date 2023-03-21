@@ -17,6 +17,7 @@
   },
   "scripts": {
     "start": "HTTPS=true react-scripts start",
+    "open": "chrome --disable-site-isolation-trials --disable-web-security --user-data-dir=\"E:\\temp\" \"https://localhost:3000\"",
     "start-http": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
