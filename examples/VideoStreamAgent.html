@@ -294,14 +294,8 @@ const waitForSelector = (iframe, selector) => {
   };
 
   const sendMessage = (iframe, text) => {
-    const inputEl = iframe.contentWindow.document.querySelector('textarea.chatInput');
-    if (inputEl) {
-      inputEl.value = text;
-      inputEl.dispatchEvent(new Event('change')); // Needed for the angular textarea to register the change 
-      inputEl.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, keyCode: 13 })); // Simulate 'Enter' key
-      return true;
-    }
-    return false;
+    const scope = iframe?.contentWindow?.scope();
+    scope.chatService.sendMessage(text, 'everyone', false, 'everyone', { images: [], shared: [] }, undefined, 'default_avatar_72');
   };
 
   // if 'outgoing' is true, it will return outgoing chat messages, otherwise it will return incoming chat messages
@@ -344,16 +338,14 @@ const waitForSelector = (iframe, selector) => {
   };
 
   const setCamera = (iframe, shouldTurnOn) => {
-    const cameraBtn = iframe.contentWindow.document.querySelector('div#ds-toolbar-video-button>div.hit-area');
-    if ((cameraBtn.title === 'Camera off' && shouldTurnOn) || (cameraBtn.title === 'Camera on' && !shouldTurnOn)) {
-      cameraBtn.click();
+    if ((iframe.contentWindow.selfMuted.video === true && shouldTurnOn) || (iframe.contentWindow.selfMuted.video === false && !shouldTurnOn)) {
+      iframe.contentWindow.document.querySelector('body').dispatchEvent(new Event('ds-only-video-click'));
     }
   };
 
   const setMic = (iframe, shouldTurnOn) => {
-    const micBtn = iframe.contentWindow.document.querySelector('div#ds-toolbar-mic-button>div.hit-area');
-    if ((micBtn.title === 'Microphone off' && shouldTurnOn) || (micBtn.title === 'Microphone on' && !shouldTurnOn)) {
-      micBtn.click();
+    if ((iframe.contentWindow.selfMuted.audio === true && shouldTurnOn) || (iframe.contentWindow.selfMuted.audio === false && !shouldTurnOn)) {
+      iframe.contentWindow.document.querySelector('body').dispatchEvent(new Event('ds-mic-click'));
     }
   };
 
@@ -404,37 +396,23 @@ const waitForSelector = (iframe, selector) => {
     }
   };
 
-  const chatResponder = () => {
-    console.log('chatResponder invoked');
-    if (isChatWindowOpen(iframeRef)) {
-      if (!chatInited) {
-        previousMessages = getChatMessages(iframeRef);
-        chatInited = true;
-      };
-      const currentMessages = getChatMessages(iframeRef);
-      const lastMessage = previousMessages.length ? previousMessages[previousMessages.length - 1] : null;
-      const newMessages = [];
-      let isold = true;
-      for (const currentMsg of currentMessages) {
-        if (!lastMessage) {
-          newMessages.push(currentMsg);
-        } else {
-          if (currentMsg.timestamp === lastMessage.timestamp && currentMsg.message === lastMessage.message) {
-            isold = false;
-          } else if (!isold) {
-            newMessages.push(currentMsg);
-          }
-        }
-      }
-      console.log('chatResponder newMessages', newMessages);
-      for (const newMessage of newMessages) {
-        console.log('chatResponder processing new message', newMessage);
-        logfield.innerHTML = `New message: ${typeof newMessage === 'object' ? JSON.stringify(newMessage) : newMessage}`;
-        processMessage(newMessage.message);
-        sendMessage(iframeRef, `ACK:${newMessage.message}`);
-      }
-      previousMessages = currentMessages;
-    } else {
+  const newMessageCallback = (iframe, messageObj) => {
+    if (messageObj.userId === parseInt(iframe?.contentWindow?.user?.userId)) {
+      return; // Outgoing message
+    }
+    const newMessage = decodeURIComponent(messageObj.msg);
+    logfield.innerHTML = `New message: ${typeof newMessage === 'object' ? JSON.stringify(newMessage) : newMessage}`;
+    processMessage(newMessage);
+    sendMessage(iframe, `ACK:${newMessage}`);
+  };
+
+  const initChatResponder = (iframe) => {
+    iframe?.contentWindow?.scope()?.$on('ds-socket-chat-message', (event, message) => newMessageCallback(iframe, message));
+  };
+
+  // Keeps chat window open
+  const chatOpener = () => {
+    if (!isChatWindowOpen(iframeRef)) {
       toggleChatWindow(iframeRef);
     }
   };
@@ -466,7 +444,8 @@ const waitForSelector = (iframe, selector) => {
     }
     if (action === 4) {
       clearInterval(initIntervalRef);
-      responderIntervalRef = setInterval(chatResponder, 3000);
+      initChatResponder(iframeRef);
+      // responderIntervalRef = setInterval(chatOpener, 3000);
     }
   }, 1000);
 
