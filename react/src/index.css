@@ -11,3 +11,23 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+.settings-section {
+  padding-bottom: 20px;
+}
+
+.text-container {
+  display: flex;
+}
+
+.text-title {
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.button-container {
+  display: flex;
+  flex-wrap: wrap;
+  row-gap: 7px;
+  column-gap: 7px;
+}
