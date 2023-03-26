@@ -1,13 +1,23 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
+import { Provider } from 'react-redux';
+// import { PersistGate } from 'redux-persist/integration/react';
+import { store /*, persistor */ } from './redux/store';
+
+// TODO: PersistGate prevents app from rendering for some reason
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <App />
+    <Provider store={store}>
+      {/* <PersistGate persistor={persistor} > */}
+        <App />
+      {/* </PersistGate> */}
+    </Provider>
   </React.StrictMode>
 );
 

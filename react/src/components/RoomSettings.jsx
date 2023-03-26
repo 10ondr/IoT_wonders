@@ -1,10 +1,11 @@
 import React, { useState } from 'react'; 
-import axios from 'axios';
 import { Button } from 'primereact/button';
 import { Dropdown } from 'primereact/dropdown';
 import {
     webrtc_getMediaServerUrl,
+    sendRequestHTTP,
 } from '../globalFunctions';
+
 
 const defaultRoomConfig = {
     request: "create",
@@ -34,20 +35,12 @@ const defaultRoomConfig = {
 
 const bitrateOptions = [64000, 128000, 256000, 512000, 1024000, 2048000];
 
-const sendPostRequest = async (url, data) => {
-    try {
-        return await axios.post(url, data);
-    } catch (error) {
-        console.log('sendRequest error: ', error);
-    }
-};
-
 const getNewSessionUrl = async (mediaUrl) => {
     const sessionReqData = {
         janus: "create",
         transaction: "Y5PuIoVxaT5j",
     };
-    const sessionResp = await sendPostRequest(mediaUrl, sessionReqData);
+    const sessionResp = await sendRequestHTTP(mediaUrl, 'post', sessionReqData);
     const sessionID = sessionResp?.data?.data?.id;
     if (!sessionID) {
         return;
@@ -58,7 +51,7 @@ const getNewSessionUrl = async (mediaUrl) => {
         opaque_id: "videoroomtest-YDfCIHQh4qCb",
         transaction: "pvFZz9hjhqCI",
     };
-    const sessionResp2 = await sendPostRequest(`${mediaUrl}/${sessionID}`, sessionReqData2);
+    const sessionResp2 = await sendRequestHTTP(`${mediaUrl}/${sessionID}`, 'post', sessionReqData2);
     const sessionSubID = sessionResp2?.data?.data?.id;
     if (!sessionSubID) {
         return null;
@@ -74,7 +67,7 @@ const isSessionActive = async (sessionUrl) => {
         },
         transaction: "P0qsOHpCRLcZ",
     };
-    const resp = await sendPostRequest(sessionUrl, data);
+    const resp = await sendRequestHTTP(sessionUrl, 'post', data);
     return !!resp?.data?.plugindata?.data?.list;
 };
 
@@ -93,7 +86,7 @@ const getRoomInfo = async (sessionUrl, roomID) => {
         },
         transaction: "P0qsOHpCRLcZ",
     };
-    const resp = await sendPostRequest(sessionUrl, data);
+    const resp = await sendRequestHTTP(sessionUrl, 'post', data);
     return resp?.data?.plugindata?.data?.list?.find((room) => room.room === roomID);
 };
 
@@ -108,7 +101,7 @@ const destroyRoom = async (sessionUrl, roomID) => {
         },
         transaction: "P0qsOHpCRLcZ",
     }
-    const resp = await sendPostRequest(sessionUrl, data);
+    const resp = await sendRequestHTTP(sessionUrl, 'post', data);
     const respData = resp?.data?.plugindata?.data;
     return respData?.videoroom === 'destroyed' && respData?.room === roomID;
 };
@@ -120,7 +113,7 @@ const createRoom = async (sessionUrl, roomConfig) => {
         body: roomConfig,
         transaction: "P0qsOHpCRLcZ",
     }
-    const resp = await sendPostRequest(sessionUrl, data);
+    const resp = await sendRequestHTTP(sessionUrl, 'post', data);
     const respData = resp?.data?.plugindata?.data;
     return respData?.videoroom === 'created' && respData?.room === roomConfig.room;
 };
@@ -134,7 +127,7 @@ const editRoom = async (sessionUrl, roomConfig) => {
         body: roomConfig,
         transaction: "P0qsOHpCRLcZ"
     }
-    const resp = await sendPostRequest(sessionUrl, data);
+    const resp = await sendRequestHTTP(sessionUrl, 'post', data);
     const respData = resp?.data?.plugindata?.data;
     return respData?.videoroom === 'edited' && respData?.room === roomConfig.room;
 };
@@ -232,7 +225,7 @@ function RoomSettings() {
             </div>
             <div className='settings-section'>
                 <h3>Automated controls</h3>
-                <div className='button-container'>
+                <div className='flex-wrap-container'>
                     <Button
                         label="Init room"
                         onClick={() => initRoom() }
@@ -253,7 +246,7 @@ function RoomSettings() {
             </div>
             <div className='settings-section'>
                 <h3>Manual controls</h3>
-                <div className='button-container'>
+                <div className='flex-wrap-container'>
                     <Button
                         label="MediaServer get url"
                         onClick={() => setMediaUrl(webrtc_getMediaServerUrl()) }

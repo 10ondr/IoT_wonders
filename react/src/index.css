@@ -20,14 +20,32 @@ code {
   display: flex;
 }
 
+.text-container p {
+  margin: 2px;
+}
+
 .text-title {
   font-weight: 500;
   white-space: nowrap;
 }
 
-.button-container {
+.flex-wrap-container {
   display: flex;
   flex-wrap: wrap;
   row-gap: 7px;
   column-gap: 7px;
+}
+
+.map-container {
+  height: 800px;
+}
+
+.map-sidebar {
+  background-color: rgba(35, 55, 75, 0.9);
+  color: #fff;
+  padding: 6px 12px;
+  font-family: monospace;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  border-radius: 4px;
 }
