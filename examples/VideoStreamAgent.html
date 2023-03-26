@@ -85,6 +85,192 @@ const waitForSelector = (iframe, selector) => {
 </script>
 
 <script>
+  /**** Mobile device sensors ****/
+  const getBatteryInfo = async () => {
+    const battery = await navigator.getBattery();
+    return {
+      status: 'OK',
+      data: {
+        level: battery.level,
+        charging: battery.charging,
+        chargingTime: battery.chargingTime === Infinity ? 'Infinity' : battery.chargingTime,
+        dischargingTime: battery.dischargingTime === Infinity ? 'Infinity' : battery.dischargingTime,
+      }
+    };
+  }
+
+  const getLocationInfo = async () => {
+    return new Promise((resolve, reject) => {
+      const success = (position) => {
+        resolve({
+          status: 'OK',
+          data: {
+            accuracy: position.coords?.accuracy,
+            altitude: position.coords?.altitude,
+            altitudeAccuracy: position.coords?.altitudeAccuracy,
+            heading: position.coords?.heading,
+            latitude: position.coords?.latitude,
+            longitude: position.coords?.longitude,
+          }
+        });
+      };
+      const error = () => {
+        resolve({ status: 'ERROR_UNKNOWN' });
+      };
+      if (!navigator.geolocation) {
+        resolve({ status: 'ERROR_UNSUPPORTED' });
+      };
+      navigator.geolocation.getCurrentPosition(success, error);
+    });
+  };
+
+  const getScreenInfo = () => {
+    return {
+      status: 'OK',
+      data: {
+        type: screen.orientation.type,
+        angle: screen.orientation.angle,
+      },
+    }
+  };
+
+  // All following sensors have common API
+  const getSensorReading = async (SensorClass, constructorParams, readingFn) => {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!SensorClass) {
+          resolve({ status: 'ERROR_CLASS_NOTFOUND' });
+          return;
+        }
+        const sensor = new SensorClass(constructorParams);
+        sensor.addEventListener("error", (event) => {
+          if (event.error.name === "NotAllowedError") {
+            resolve({ status: 'ERROR_PERMISSIONS_REQUESTED' });
+          } else if (event.error.name === "NotReadableError") {
+            resolve({ status: 'ERROR_READ' });
+          }
+          if (sensor?.activated) {
+            sensor.stop();
+          }
+        });
+        sensor.addEventListener("reading", () => {
+          if (sensor.hasReading) {
+            resolve({
+              status: 'OK',
+              data: readingFn(sensor),
+            });
+          } else {
+            resolve({
+              status: 'ERROR_NOREADING',
+            });
+          }
+          if (sensor?.activated) {
+            sensor.stop();
+          }
+        });
+        sensor.start();
+      } catch (error) {
+        if (error.name === "SecurityError") {
+          resolve({ status: 'ERROR_PERMISSIONS_BLOCKED' });
+        } else if (error.name === "ReferenceError") {
+          resolve({ status: 'ERROR_UNSUPPORTED' });
+        } else {
+          resolve({ status: 'ERROR_UNKNOWN' });
+        }
+      };
+    });
+  };
+
+  const getAccelerometerInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.x,
+      y: sensor.y,
+      z: sensor.z,
+    });
+    return getSensorReading(window.Accelerometer, { referenceFrame: "device" }, sensorFn);
+  };
+
+  const getLinearAccelerationInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.x,
+      y: sensor.y,
+      z: sensor.z,
+    });
+    return getSensorReading(window.LinearAccelerationSensor, { frequency: 60 }, sensorFn);
+  };
+
+  const getAbsoluteOrientationInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.quaternion[0],
+      y: sensor.quaternion[1],
+      z: sensor.quaternion[2],
+      w: sensor.quaternion[3],
+    });
+    return getSensorReading(window.AbsoluteOrientationSensor, { frequency: 60, referenceFrame: "device" }, sensorFn);
+  };
+
+  const getRelativeOrientationInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.quaternion[0],
+      y: sensor.quaternion[1],
+      z: sensor.quaternion[2],
+      w: sensor.quaternion[3],
+    });
+    return getSensorReading(window.RelativeOrientationSensor, { frequency: 60, referenceFrame: "device" }, sensorFn);
+  };
+
+  const getGravityInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.x,
+      y: sensor.y,
+      z: sensor.z,
+    });
+    return getSensorReading(window.GravitySensor, { frequency: 60 }, sensorFn);
+  };
+
+  const getGyroscopeInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.x,
+      y: sensor.y,
+      z: sensor.z,
+    });
+    return getSensorReading(window.Gyroscope, { frequency: 60 }, sensorFn);
+  };
+
+  // Experimental - needs to be enabled explicitly: chrome://flags/#enable-generic-sensor-extra-classes
+  const getMagnetometerInfo = async () => {
+    const sensorFn = (sensor) => ({
+      x: sensor.x,
+      y: sensor.y,
+      z: sensor.z,
+    });
+    return getSensorReading(window.Magnetometer, { frequency: 10, referenceFrame: "device" }, sensorFn);
+  };
+
+  // Experimental - needs to be enabled explicitly: chrome://flags/#enable-generic-sensor-extra-classes
+  const getAmbientLightInfo = async () => {
+    const sensorFn = (sensor) => ({
+      illuminance: sensor.illuminance,
+    });
+    return getSensorReading(window.AmbientLightSensor, {}, sensorFn);
+  };
+
+  const deviceSensorsMap = {
+    'battery': getBatteryInfo,
+    'location': getLocationInfo,
+    'screen': getScreenInfo,
+    'accelerometer': getAccelerometerInfo,
+    'linearAcceleration': getLinearAccelerationInfo,
+    'absoluteOrientation': getAbsoluteOrientationInfo,
+    'relativeOrientation': getRelativeOrientationInfo,
+    'magnetometer': getMagnetometerInfo,
+    'ambientLight': getAmbientLightInfo,
+    'gravity': getGravityInfo,
+    'gyroscope': getGyroscopeInfo,
+  };
+</script>
+
+<script>
   /**** Bluetooth Low Energy (BLE) ****/
   // HTML elements
   const button = document.querySelector('#blepairbtn');
@@ -296,6 +482,7 @@ const waitForSelector = (iframe, selector) => {
   const sendMessage = (iframe, text) => {
     const scope = iframe?.contentWindow?.scope();
     scope.chatService.sendMessage(text, 'everyone', false, 'everyone', { images: [], shared: [] }, undefined, 'default_avatar_72');
+    // console.log('Sent message', text);
   };
 
   // if 'outgoing' is true, it will return outgoing chat messages, otherwise it will return incoming chat messages
@@ -349,7 +536,7 @@ const waitForSelector = (iframe, selector) => {
     }
   };
 
-  const processMessage = async (message) => {
+  const processMessage = async (iframe, message) => {
     let parsed = message;
     try {
       parsed = JSON.parse(message);
@@ -394,6 +581,19 @@ const waitForSelector = (iframe, selector) => {
           }
       }
     }
+    if (parsed.sensors) {
+      const includeSensors = Object.keys(deviceSensorsMap).filter((sensorName) => parsed.sensors[sensorName] || parsed.sensors['all']);
+      const sensorData = {};
+      
+      for (const sensorName of includeSensors) {
+        sensorData[sensorName] = await deviceSensorsMap[sensorName]();
+      }
+      const response = {
+        timestamp: new Date().getTime(),
+        sensorData,
+      }
+      sendMessage(iframe, `SENSORS:${JSON.stringify(response)}`);
+    }
   };
 
   const newMessageCallback = (iframe, messageObj) => {
@@ -402,7 +602,7 @@ const waitForSelector = (iframe, selector) => {
     }
     const newMessage = decodeURIComponent(messageObj.msg);
     logfield.innerHTML = `New message: ${typeof newMessage === 'object' ? JSON.stringify(newMessage) : newMessage}`;
-    processMessage(newMessage);
+    processMessage(iframe, newMessage);
     sendMessage(iframe, `ACK:${newMessage}`);
   };
 
